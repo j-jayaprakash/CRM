@@ -1,0 +1,83 @@
+package com.jsp.integration.service;
+
+import java.time.LocalDate;
+import java.util.StringJoiner;
+
+import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jsp.integration.dto.SmsDetailsDto;
+import com.jsp.integration.dto.SmsDto;
+import com.jsp.integration.entity.SmsDetails;
+import com.jsp.integration.util.EDUtil;
+import com.jsp.integration.util.Sms;
+import com.twilio.Twilio;
+import com.twilio.rest.api.v2010.account.Message;
+import com.twilio.type.PhoneNumber;
+
+@Service
+public class SmsServiceImpl implements SmsService {
+
+	@Autowired
+	public Sms sms;
+
+	@Autowired
+	ModelMapper mapper;
+
+	@Autowired
+	JdbcTemplate jdbcTemplate;
+
+	@Override
+	public void sendAutomaticMessage(SmsDto smsDto) {
+		Twilio.init(sms.getAccountSid(), sms.getAuthToken());
+
+		Message.creator(new PhoneNumber(smsDto.getTo()), new PhoneNumber(smsDto.getPhoneNumber()), smsDto.getMessage())
+				.create();
+
+	}
+
+	public String createTemplate(SmsDetailsDto smsDetDto) {
+
+		SmsDetails map = mapper.map(smsDetDto, SmsDetails.class);
+
+		map.setTemplateContent(EDUtil.encode(smsDetDto.getTemplateContent()));
+
+		try {
+			String templatePlaceholder = new ObjectMapper().writeValueAsString(smsDetDto.getTemplatePlaceholders());
+
+			map.setTemplatePlaceholder(templatePlaceholder.toString());
+
+		} catch (JsonProcessingException e) {
+
+			e.printStackTrace();
+
+		}
+		StringBuilder builder = new StringBuilder();
+
+		StringJoiner stringJoiner = new StringJoiner("','", "('", "')");
+
+		builder.append("insert into sms_details ( template_code," + "entity_id,"
+				+ "template_subject," + "template_content," + "template_placeholder," + "created_date,"
+				+ "created_by," + "modified_date," + "modified_by) values ");
+		stringJoiner.add(map.getTemplateCode());
+		stringJoiner.add(map.getEntityId());
+		stringJoiner.add(map.getTemplateSubject());
+		stringJoiner.add(map.getTemplateContent());
+		stringJoiner.add(map.getTemplatePlaceholder() +"',"+ LocalDate.now());
+		stringJoiner.add(map.getCreatedBy()+"',"+map.getModifiedDate());
+		
+		stringJoiner.add(map.getModified_by());
+
+		builder.append(stringJoiner);
+		jdbcTemplate.execute(builder.toString());
+
+		System.out.println(builder);
+		return builder.toString();
+
+	}
+
+}
